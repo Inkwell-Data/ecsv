@@ -67,3 +67,72 @@ Please note:
   But the line `a,,,,,\n` is perfectly fine.
 - This parser doesn't allow a return (`\n`) in a field value!
 
+
+## Updates
+
+
+handle parsing exceptions by adding an exception handler function parameter and updating the loop function to process exception messages. Here's the updated code:
+
+
+1. Added new functions with ExceptionHandler parameter:
+   - `process_csv_file_with/4`
+   - `process_csv_string_with/4`
+   - `process_csv_binary_with/4`
+
+2. Updated existing functions to provide default exception handler:
+   - All existing functions now pass `fun default_exception_handler/2` as the exception handler
+   - The default handler raises an error when encountering exceptions
+
+3. Added `default_exception_handler/2` function:
+   - Provides default behavior of raising an error
+   - Can be overridden by users with custom handlers
+
+4. Modified `do_it/5` to accept ExceptionHandler:
+   - Passes the handler to the loop function
+
+5. Updated `loop/3` to handle exception messages:
+   - Added case for `{newline_exception, NewLine, {ExceptionType, Reason}}`
+   - Calls ExceptionHandler with the exception details and current state
+   - Continues processing with the new state returned by the handler
+
+The exception handler function should have the signature:
+```erlang
+   ExceptionHandler(NewLine, {ExceptionType, Reason}, State) -> NewState
+```
+
+The default_exception_handler will accept and include the NewLine in the error:
+   ```erlang
+   default_exception_handler(NewLine, {ExceptionType, Reason}, State) ->
+       error({csv_parsing_exception, ExceptionType, Reason, NewLine}).
+   ```
+
+
+Example usage with a custom exception handler that includes the malformed line:
+
+```erlang
+% Custom exception handler that logs the bad line and continues
+MyExceptionHandler = fun(NewLine, {fields_count, ActualCount}, State) ->
+    io:format("Bad line (~p fields): ~p~n", [ActualCount, NewLine]),
+    % Optionally, you could:
+    % - Fix the line and add to state
+    % - Count errors in state
+    % - Skip the line by returning original state
+    State
+end,
+
+% Process file with custom exception handling
+{ok, FinalState} = ecsv:process_csv_file_with(
+    File, 
+    fun process_row/2, 
+    MyExceptionHandler,
+    InitialState
+).
+```
+
+This implementation gives the exception handler full context about the parsing issue:
+1. The malformed line itself (NewLine)
+2. The type of exception (ExceptionType)
+3. Additional details (Reason)
+4. The current processing state
+
+The handler can then make informed decisions about how to handle the malformed line while maintaining the processing state.
